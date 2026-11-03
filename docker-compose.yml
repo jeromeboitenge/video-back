@@ -1,0 +1,18 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: frameforge
+      POSTGRES_PASSWORD: frameforge
+      POSTGRES_DB: frameforge
+    ports:
+      - "5432:5432"
+    volumes:
+      - frameforge_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U frameforge -d frameforge"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+volumes:
+  frameforge_pg:
