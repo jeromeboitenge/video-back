@@ -85,7 +85,7 @@ def list_projects(user: User = Depends(current_user), db: Session = Depends(get_
 
 @router.post("/projects", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
 def create_project(payload: ProjectCreate, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    project = Project(owner_id=user.id, name=payload.name, document=payload.document.model_dump())
+    project = Project(owner_id=user.id, name=payload.name, document=payload.document.model_dump(exclude_unset=True))
     db.add(project)
     db.commit()
     db.refresh(project)
@@ -106,7 +106,7 @@ def save_project(project_id: str, payload: ProjectSave, user: User = Depends(cur
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     project.name = payload.name
-    project.document = payload.document.model_dump()
+    project.document = payload.document.model_dump(exclude_unset=True)
     db.commit()
     db.refresh(project)
     return project

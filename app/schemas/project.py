@@ -9,6 +9,7 @@ class ProjectDocument(BaseModel):
     tracks: list[dict] = Field(default_factory=list)
     clips: list[dict] = Field(default_factory=list)
     assets: list[dict] = Field(default_factory=list)
+    effects: list[dict] = Field(default_factory=list)
     settings: dict = Field(default_factory=dict)
 
 

@@ -32,7 +32,16 @@ def test_authenticated_project_is_owned_by_creator():
         second = client.post("/api/v1/auth/register", json={"email": f"second-{suffix}@example.com", "password": "another strong pass"})
         assert first.status_code == 201
         assert second.status_code == 201
-        document = {"version": 1, "project": {}, "canvas": {"width": 1080}, "tracks": [], "clips": [], "assets": [], "settings": {}}
+        document = {
+            "version": 1,
+            "project": {},
+            "canvas": {"width": 1080},
+            "tracks": [],
+            "clips": [],
+            "assets": [{"id": "asset-1", "name": "scene.mp4", "kind": "video", "mimeType": "video/mp4", "size": 1}],
+            "effects": [{"id": "effect-1", "assetId": "asset-1", "type": "vivid", "strength": 75, "enabled": True}],
+            "settings": {},
+        }
         created = client.post("/api/v1/projects", json={"name": "First edit", "document": document}, headers={"Authorization": f"Bearer {first.json()['access_token']}"})
         assert created.status_code == 201
         project_id = created.json()["id"]
