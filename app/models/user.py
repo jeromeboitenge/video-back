@@ -15,3 +15,4 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     projects: Mapped[list["Project"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
+    media_assets: Mapped[list["MediaAsset"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
