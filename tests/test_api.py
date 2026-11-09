@@ -99,3 +99,16 @@ def test_media_upload_requires_auth_and_rejects_unsupported_or_oversized_files(t
         assert oversized.status_code == 413
         assert empty.status_code == 400
         assert not [path for path in tmp_path.rglob("*") if path.is_file()]
+
+
+def test_media_upload_rejects_declared_type_that_does_not_match_file_content(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.services.media_storage.settings.media_root", str(tmp_path))
+    with TestClient(app) as client:
+        headers = create_account(client, "media-signature")
+        response = client.post(
+            "/api/v1/media",
+            headers=headers,
+            files={"file": ("fake.png", b"not a valid png image", "image/png")},
+        )
+        assert response.status_code == 415
+        assert not [path for path in tmp_path.rglob("*") if path.is_file()]

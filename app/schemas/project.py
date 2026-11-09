@@ -1,8 +1,11 @@
 from datetime import datetime
-from pydantic import BaseModel, Field
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ProjectDocument(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     version: int = Field(ge=1)
     project: dict = Field(default_factory=dict)
     canvas: dict = Field(default_factory=dict)
@@ -10,6 +13,7 @@ class ProjectDocument(BaseModel):
     clips: list[dict] = Field(default_factory=list)
     assets: list[dict] = Field(default_factory=list)
     effects: list[dict] = Field(default_factory=list)
+    textOverlays: list[dict] = Field(default_factory=list)
     settings: dict = Field(default_factory=dict)
 
 

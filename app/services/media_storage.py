@@ -27,6 +27,14 @@ ALLOWED_MEDIA_TYPES = {
     "audio/webm": ".webm",
 }
 
+FILE_SIGNATURES = {
+    "image/jpeg": (b"\xff\xd8\xff",),
+    "image/png": (b"\x89PNG\r\n\x1a\n",),
+    "image/webp": (b"RIFF",),
+    "image/gif": (b"GIF87a", b"GIF89a"),
+    "image/avif": (b"ftyp", b"\x00\x00\x00\x18ftyp", b"\x00\x00\x00\x20ftyp"),
+}
+
 
 def media_path(storage_key: str) -> Path:
     root = Path(settings.media_root).resolve()
@@ -50,12 +58,28 @@ def validate_media_type(content_type: str | None) -> tuple[str, str]:
     return mime_type, extension
 
 
+def validate_signature(upload: UploadFile, mime_type: str | None) -> None:
+    declared_type = (mime_type or "").split(";", 1)[0].strip().lower()
+    sample = upload.file.read(512)
+    upload.file.seek(0)
+    if not sample:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded media file is empty")
+
+    signatures = FILE_SIGNATURES.get(declared_type, ())
+    if not signatures:
+        return
+    header = sample[:16]
+    if not any(header.startswith(prefix) for prefix in signatures):
+        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Uploaded file content does not match the declared media type")
+
+
 def save_upload(upload: UploadFile, storage_key: str) -> int:
     destination = media_path(storage_key)
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary_path: Path | None = None
     total = 0
     try:
+        validate_signature(upload, upload.content_type)
         with NamedTemporaryFile(mode="wb", dir=destination.parent, prefix=".upload-", delete=False) as target:
             temporary_path = Path(target.name)
             while chunk := upload.file.read(CHUNK_SIZE):
