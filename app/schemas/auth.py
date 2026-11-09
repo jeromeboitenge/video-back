@@ -9,6 +9,7 @@ class Credentials(BaseModel):
 class UserResponse(BaseModel):
     id: str
     email: EmailStr
+    is_admin: bool = False
 
 
 class TokenResponse(BaseModel):

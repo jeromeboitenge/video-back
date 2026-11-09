@@ -26,8 +26,10 @@ def isolated_test_database():
             session.close()
 
     app.dependency_overrides[get_db] = override_get_db
+    test_db = test_session()
     try:
-        yield
+        yield test_db
     finally:
+        test_db.close()
         app.dependency_overrides.pop(get_db, None)
         test_engine.dispose()

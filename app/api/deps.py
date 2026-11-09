@@ -23,3 +23,9 @@ def current_user(token: str | None = Depends(oauth2_scheme), db: Session = Depen
     if not user:
         raise unauthorized
     return user
+
+
+def current_admin(user: User = Depends(current_user)) -> User:
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Administrator access required")
+    return user

@@ -67,7 +67,7 @@ def register(payload: Credentials, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
-    return TokenResponse(access_token=create_access_token(user.id), user=UserResponse(id=user.id, email=user.email))
+    return TokenResponse(access_token=create_access_token(user.id), user=UserResponse(id=user.id, email=user.email, is_admin=user.is_admin))
 
 
 @router.post("/auth/login", response_model=TokenResponse)
@@ -75,7 +75,12 @@ def login(payload: Credentials, db: Session = Depends(get_db)):
     user = db.scalar(select(User).where(User.email == str(payload.email).lower()))
     if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Email or password is incorrect")
-    return TokenResponse(access_token=create_access_token(user.id), user=UserResponse(id=user.id, email=user.email))
+    return TokenResponse(access_token=create_access_token(user.id), user=UserResponse(id=user.id, email=user.email, is_admin=user.is_admin))
+
+
+@router.get("/auth/me", response_model=UserResponse)
+def get_current_user(user: User = Depends(current_user)):
+    return UserResponse(id=user.id, email=user.email, is_admin=user.is_admin)
 
 
 @router.get("/projects", response_model=list[ProjectResponse])
