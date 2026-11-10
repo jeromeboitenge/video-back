@@ -1,3 +1,4 @@
+import logging
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -21,6 +22,7 @@ from app.services.media_storage import display_filename, media_path, save_upload
 from app.services.project_image_layers import project_response, sync_project_image_layers
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/media", response_model=list[MediaAssetResponse])
@@ -60,6 +62,33 @@ def get_media_content(asset_id: str, user: User = Depends(current_user), db: Ses
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Media file is unavailable")
     return FileResponse(path, media_type=asset.mime_type, filename=asset.name)
+
+
+@router.delete("/media/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_media(asset_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> None:
+    asset = db.scalar(select(MediaAsset).where(MediaAsset.id == asset_id, MediaAsset.owner_id == user.id))
+    if not asset:
+        raise HTTPException(status_code=404, detail="Media asset not found")
+
+    path = media_path(asset.storage_key)
+    tombstone = path.with_name(f".{path.name}.{uuid4().hex}.deleting")
+    moved_file = path.is_file()
+    if moved_file:
+        path.replace(tombstone)
+    try:
+        db.delete(asset)
+        db.commit()
+    except Exception:
+        db.rollback()
+        if moved_file and tombstone.is_file():
+            tombstone.replace(path)
+        raise
+
+    if moved_file:
+        try:
+            tombstone.unlink(missing_ok=True)
+        except OSError:
+            logger.exception("Could not remove deleted media file %s", tombstone)
 
 
 @router.post("/auth/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
