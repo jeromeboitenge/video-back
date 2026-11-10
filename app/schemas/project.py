@@ -58,6 +58,11 @@ class ProjectCreate(BaseModel):
 class ProjectSave(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     document: ProjectDocument
+    expected_revision: int | None = Field(default=None, ge=1)
+
+
+class ProjectRestore(BaseModel):
+    expected_revision: int = Field(ge=1)
 
 
 class ProjectResponse(BaseModel):
@@ -66,6 +71,7 @@ class ProjectResponse(BaseModel):
     document: dict
     created_at: datetime
     updated_at: datetime
+    revision: int
 
     model_config = {"from_attributes": True}
 

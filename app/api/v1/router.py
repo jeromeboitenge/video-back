@@ -1,9 +1,10 @@
+from datetime import datetime, timezone
 import logging
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -17,7 +18,7 @@ from app.models.project_version import ProjectVersion
 from app.models.user import User
 from app.schemas.auth import Credentials, TokenResponse, UserResponse
 from app.schemas.media import MediaAssetResponse
-from app.schemas.project import ProjectCreate, ProjectResponse, ProjectSave, ProjectVersionResponse
+from app.schemas.project import ProjectCreate, ProjectResponse, ProjectRestore, ProjectSave, ProjectVersionResponse
 from app.services.media_storage import display_filename, media_path, save_upload, validate_media_type
 from app.services.project_image_layers import project_response, sync_project_image_layers
 
@@ -154,8 +155,24 @@ def save_project(project_id: str, payload: ProjectSave, user: User = Depends(cur
     project = db.scalar(select(Project).where(Project.id == project_id, Project.owner_id == user.id))
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    project.name = payload.name
-    project.document = payload.document.model_dump(exclude_unset=True)
+    document = payload.document.model_dump(exclude_unset=True)
+    if payload.expected_revision is not None:
+        result = db.execute(
+            update(Project)
+            .where(Project.id == project.id, Project.owner_id == user.id, Project.revision == payload.expected_revision)
+            .values(name=payload.name, document=document, revision=Project.revision + 1, updated_at=datetime.now(timezone.utc))
+        )
+        if result.rowcount != 1:
+            db.rollback()
+            latest_revision = db.scalar(select(Project.revision).where(Project.id == project_id, Project.owner_id == user.id))
+            if latest_revision is None:
+                raise HTTPException(status_code=404, detail="Project not found")
+            raise HTTPException(status_code=409, detail={"code": "project_conflict", "message": "This project changed on another device. Reload it or explicitly keep your local version.", "revision": latest_revision})
+        project = db.scalar(select(Project).where(Project.id == project_id, Project.owner_id == user.id))
+    else:
+        project.name = payload.name
+        project.document = document
+        project.revision += 1
     sync_project_image_layers(db, project.id, payload.document.imageLayers)
     db.commit()
     db.refresh(project)
@@ -206,7 +223,7 @@ def create_project_version(project_id: str, user: User = Depends(current_user), 
 
 
 @router.post("/projects/{project_id}/versions/{version_id}/restore", response_model=ProjectResponse)
-def restore_project_version(project_id: str, version_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def restore_project_version(project_id: str, version_id: str, user: User = Depends(current_user), db: Session = Depends(get_db), payload: ProjectRestore | None = Body(default=None)):
     project = db.scalar(select(Project).where(Project.id == project_id, Project.owner_id == user.id))
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -214,8 +231,19 @@ def restore_project_version(project_id: str, version_id: str, user: User = Depen
     if not version:
         raise HTTPException(status_code=404, detail="Project version not found")
     restored = ProjectSave(name=version.name, document=version.document)
-    project.name = restored.name
-    project.document = restored.document.model_dump(exclude_unset=True)
+    expected_revision = payload.expected_revision if isinstance(payload, ProjectRestore) else project.revision
+    result = db.execute(
+        update(Project)
+        .where(Project.id == project.id, Project.owner_id == user.id, Project.revision == expected_revision)
+        .values(name=restored.name, document=restored.document.model_dump(exclude_unset=True), revision=Project.revision + 1, updated_at=datetime.now(timezone.utc))
+    )
+    if result.rowcount != 1:
+        db.rollback()
+        latest_revision = db.scalar(select(Project.revision).where(Project.id == project_id, Project.owner_id == user.id))
+        if latest_revision is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        raise HTTPException(status_code=409, detail={"code": "project_conflict", "message": "This project changed before the selected version could be restored. Reload it or resolve the local version first.", "revision": latest_revision})
+    project = db.scalar(select(Project).where(Project.id == project_id, Project.owner_id == user.id))
     sync_project_image_layers(db, project.id, restored.document.imageLayers)
     db.commit()
     db.refresh(project)

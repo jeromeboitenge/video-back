@@ -75,4 +75,5 @@ def project_response(project, layer_rows: list[ProjectImageLayer]) -> dict[str, 
         "document": document,
         "created_at": project.created_at,
         "updated_at": project.updated_at,
+        "revision": project.revision,
     }
