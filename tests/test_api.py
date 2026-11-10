@@ -4,6 +4,7 @@ from sqlalchemy import select
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.core.security import create_access_token
 from app.models.user import User
 
 
@@ -52,6 +53,44 @@ def test_authenticated_project_is_owned_by_creator():
         assert own_read.status_code == 200
         assert own_read.json()["document"] == document
         assert other_read.status_code == 404
+
+
+def test_project_image_layers_are_validated_saved_and_returned(isolated_test_database):
+    user = User(email=f"layer-project-{uuid.uuid4().hex}@example.com", password_hash="test-only")
+    isolated_test_database.add(user)
+    isolated_test_database.commit()
+    headers = {"Authorization": f"Bearer {create_access_token(user.id)}"}
+    with TestClient(app) as client:
+        document = {
+            "version": 1,
+            "project": {"id": "local-layer-project", "name": "Layered poster"},
+            "canvas": {"width": 1080, "height": 1920, "fps": 30, "background": "#151619"},
+            "tracks": [],
+            "clips": [],
+            "assets": [{"id": "image-1", "name": "poster.png", "kind": "image", "mimeType": "image/png", "size": 20}],
+            "imageLayers": [{
+                "id": "layer-1", "assetId": "image-1", "name": "Poster", "visible": True, "locked": False,
+                "opacity": 0.75, "blendMode": "multiply", "x": 12, "y": -3, "scale": 1.2, "rotation": 8,
+                "cropLeft": 0.1, "cropTop": 0, "cropRight": 0.05, "cropBottom": 0,
+            }],
+            "settings": {},
+        }
+        created = client.post("/api/v1/projects", headers=headers, json={"name": "Layered poster", "document": document})
+        assert created.status_code == 201
+        project_id = created.json()["id"]
+        expected_layer = document["imageLayers"][0]
+        assert created.json()["document"]["imageLayers"] == [expected_layer]
+
+        saved = client.put(f"/api/v1/projects/{project_id}", headers=headers, json={"name": "Updated poster", "document": document})
+        assert saved.status_code == 200
+        fetched = client.get(f"/api/v1/projects/{project_id}", headers=headers)
+        assert fetched.status_code == 200
+        assert fetched.json()["document"]["imageLayers"] == [expected_layer]
+
+        invalid_crop = {**document, "imageLayers": [{**expected_layer, "cropLeft": 0.8, "cropRight": 0.2}]}
+        assert client.put(f"/api/v1/projects/{project_id}", headers=headers, json={"name": "Broken crop", "document": invalid_crop}).status_code == 422
+        invalid_reference = {**document, "imageLayers": [{**expected_layer, "assetId": "missing-image"}]}
+        assert client.post("/api/v1/projects", headers=headers, json={"name": "Broken layer", "document": invalid_reference}).status_code == 422
 
 
 def test_duplicate_registration_is_rejected():
